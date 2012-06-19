@@ -6,6 +6,9 @@ import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
+
+import javax.net.ssl.SSLException;
 
 import org.apache.http.ConnectionReuseStrategy;
 import org.apache.http.Header;
@@ -51,24 +54,20 @@ public class Request {
         String target = null;
 
         if (method == HttpMethod.GET) {
-            target = buildURL(host, apiVersion, path, params);
+            target = buildURL(host, path, params);
             req = new HttpGet(target);
         } else {
-            target = buildURL(host, apiVersion, path, null);
+            target = buildURL(host, path, null);
             HttpPost post = new HttpPost(target);
 
-            if (params != null && params.length >= 2) {
-                if (params.length % 2 != 0) {
-                    throw new IllegalArgumentException("Params must have an even number of elements.");
-                }
-                List<NameValuePair> nvps = new ArrayList<NameValuePair>();
+            if (params != null && params.size() >= 0) {
 
-                for (int i = 0; i < params.length; i += 2) {
-                    if (params[i + 1] != null) {
-                        nvps.add(new BasicNameValuePair(params[i], params[i + 1]));
+                List<NameValuePair> nvps = new ArrayList<NameValuePair>();
+                for(Entry<String,Object> param : params.entrySet()){
+                	if (param.getValue() != null) {
+                        nvps.add(new BasicNameValuePair(param.getKey(), param.getKey()));
                     }
                 }
-
                 try {
                     post.setEntity(new UrlEncodedFormEntity(nvps, HTTP.UTF_8));
                 } catch (UnsupportedEncodingException e) {
@@ -86,14 +85,7 @@ public class Request {
 	
 	public static HttpResponse execute(HttpUriRequest req) {
         HttpClient client = getHttpClient();
-
-        // Set request timeouts.
-        session.setRequestTimeout(req);
-        if (socketTimeoutOverrideMs >= 0) {
-            HttpParams reqParams = req.getParams();
-            HttpConnectionParams.setSoTimeout(reqParams, socketTimeoutOverrideMs);
-        }
-
+        
         try {
             HttpResponse response = null;
             for (int retries = 0; response == null && retries < 5; retries++) {
@@ -221,8 +213,7 @@ public class Request {
         return client;
     }
 
-	public static String buildURL(String host, int apiVersion,
-            String target, String[] params) {
+	public static String buildURL(String host, String target, Map<String,Object> params) {
         if (!target.startsWith("/")) {
             target = "/" + target;
         }
@@ -230,10 +221,10 @@ public class Request {
         try {
             // We have to encode the whole line, then remove + and / encoding
             // to get a good OAuth URL.
-            target = URLEncoder.encode("/" + apiVersion + target, "UTF-8");
+            target = URLEncoder.encode("/" + target, "UTF-8");
             target = target.replace("%2F", "/");
 
-            if (params != null && params.length > 0) {
+            if (params != null && params.size() > 0) {
                 target += "?" + urlencode(params);
             }
 
@@ -249,25 +240,20 @@ public class Request {
 	 /**
      * URL encodes an array of parameters into a query string.
      */
-    private static String urlencode(String[] params) {
-        if (params.length % 2 != 0) {
-            throw new IllegalArgumentException("Params must have an even number of elements.");
-        }
-
+    private static String urlencode(Map<String,Object> params) {
         String result = "";
         try {
             boolean firstTime = true;
-            for (int i = 0; i < params.length; i += 2) {
-                if (params[i + 1] != null) {
-                    if (firstTime) {
-                        firstTime = false;
-                    } else {
-                        result += "&";
-                    }
-                    result += URLEncoder.encode(params[i], "UTF-8") + "="
-                    + URLEncoder.encode(params[i + 1], "UTF-8");
+            for(Entry<String,Object> param : params.entrySet()){
+            	if (firstTime) {
+                    firstTime = false;
+                } else {
+                    result += "&";
                 }
+            	result += URLEncoder.encode(param.getKey(), "UTF-8") + "="
+                + URLEncoder.encode(param.getValue().toString(), "UTF-8");
             }
+
             result.replace("*", "%2A");
         } catch (UnsupportedEncodingException e) {
             return null;
